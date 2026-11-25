@@ -7,6 +7,12 @@ health:
   w_C: 0.25
   rho_max: 3.0      # severe if windowed p95 latency >= rho_max * L_slo
   U_crit: 0.95      # severe if utilisation >= this
-  C_min: 0.10       # severe if reliability <= this
+  C_min: 0.10       ## severe if reliability <= this
   Z_switch: 0.45
   Z_recover: 0.20
+
+switching:
+  N_w: 3            # consecutive bad samples needed to switch (debounce)
+  N_rec: 3          # consecutive good probes needed to recover
+  D: 10.0           # minimum dwell time after any transition (s)
+  T_rec: 60.0       # max time allowed for a recovery attempt (s)
