@@ -1,0 +1,57 @@
+
+# ==============================
+# Python virtual environment
+# ==============================
+.venv/
+venv/
+env/
+
+# ==============================
+# Python cache files
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==============================
+# Environment variables / secrets
+# ==============================
+.env
+.env.*
+!.env.example
+
+# ==============================
+# Dataset files
+# ==============================
+data/raw/
+data/processed/
+
+# ==============================
+# Jupyter Notebook
+# ==============================
+.ipynb_checkpoints/
+
+# ==============================
+# IDE / Editor
+# ==============================
+.vscode/
+.idea/
+
+# ==============================
+# Logs
+# ==============================
+*.log
+
+# ==============================
+# OS generated files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Model checkpoints (optional)
+# Uncomment if you don't want to upload model files
+# ==============================
+# models/*.pt
+# models/*.pth
+# models/*.h5
