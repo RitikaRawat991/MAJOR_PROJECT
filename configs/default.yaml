@@ -1,0 +1,12 @@
+health:
+  L_slo: 5.0        # ms, latency SLO
+  U_max: 0.85       # utilisation considered saturated
+  C_target: 0.40    # reliability target
+  w_L: 0.50
+  w_U: 0.25
+  w_C: 0.25
+  rho_max: 3.0      # severe if windowed p95 latency >= rho_max * L_slo
+  U_crit: 0.95      # severe if utilisation >= this
+  C_min: 0.10       # severe if reliability <= this
+  Z_switch: 0.45
+  Z_recover: 0.20
