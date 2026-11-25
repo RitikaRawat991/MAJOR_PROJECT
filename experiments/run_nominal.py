@@ -1,5 +1,5 @@
-"""run_nominal.py -- Step 8. Fault-free run of the full system (calibration run).
-Run:  python -m experiments.run_nominal
+"""run_nominal.py -- Step 8. Fault-free run of the full system.
+Run:  python -m experiments.run_nominal [config.yaml]
 """
 import json
 import sys
