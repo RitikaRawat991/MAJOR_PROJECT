@@ -16,3 +16,12 @@ switching:
   N_rec: 3          # consecutive good probes needed to recover
   D: 10.0           # minimum dwell time after any transition (s)
   T_rec: 60.0       # max time allowed for a recovery attempt (s)
+
+runtime:
+  rate_hz: 20             # request rate of the replayed stream
+  dt: 0.5                 # controller sampling period (s)
+  tau_w: 5.0              # window for latency / reliability statistics (s)
+  T_hb: 1.0               # heartbeat timeout (s)
+  T_req: 0.1              # per-request timeout (s)
+  restart_cooldown: 5.0   # min time between restarts of a worker (s)
+  wd_consecutive: 3       # consecutive request timeouts => inference watchdog fires
