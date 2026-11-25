@@ -2,6 +2,7 @@
 Run:  python -m src.models.primary_lstm
 """
 import json
+import time
 from pathlib import Path
 import numpy as np
 import torch
@@ -33,6 +34,16 @@ def mae_kw(pred, true, std):
     return float(np.mean(np.abs(pred - true)) * std)   # back to kW
 
 
+def predict(model, X, batch=1024):
+    """Inference in small batches so memory stays small."""
+    model.eval()
+    out = []
+    with torch.no_grad():
+        for i in range(0, len(X), batch):
+            out.append(model(torch.from_numpy(X[i:i + batch])).numpy())
+    return np.concatenate(out)
+
+
 if __name__ == "__main__":
     MODEL_DIR.mkdir(exist_ok=True)
     train_df, val_df = load_split("train"), load_split("val")
@@ -45,14 +56,13 @@ if __name__ == "__main__":
     Xva, yva, _ = make_windows(val_df, scaler, stride=5)
     print(f"train windows: {len(Xtr):,}   val windows: {len(Xva):,}")
 
-    # --- baseline: persistence (predict "same as now") ---
-    persist = Xva[:, -1, 0]
+    # --- baselines ---
+    persist = Xva[:, -1, 0]                         # "same as now"
     print(f"[baseline] persistence val MAE: {mae_kw(persist, yva, std):.4f} kW")
-    print(f"[baseline] mean-predictor val MAE: {mae_kw(0*yva, yva, std):.4f} kW")
+    print(f"[baseline] mean-predictor val MAE: {mae_kw(0 * yva, yva, std):.4f} kW")
 
     loader = DataLoader(TensorDataset(torch.from_numpy(Xtr), torch.from_numpy(ytr)),
                         batch_size=256, shuffle=True)
-    Xva_t = torch.from_numpy(Xva)
 
     model = BiLSTM()
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -60,17 +70,16 @@ if __name__ == "__main__":
 
     best = float("inf")
     for epoch in range(1, 9):
+        t0 = time.time()
         model.train()
         for xb, yb in loader:
             opt.zero_grad()
             loss_fn(model(xb), yb).backward()
             opt.step()
 
-        model.eval()
-        with torch.no_grad():
-            pv = model(Xva_t).numpy()
+        pv = predict(model, Xva)
         val_mae = mae_kw(pv, yva, std)
-        print(f"epoch {epoch}  val MAE: {val_mae:.4f} kW")
+        print(f"epoch {epoch}  val MAE: {val_mae:.4f} kW  ({time.time()-t0:.0f}s)")
         if val_mae < best:                          # keep best epoch only
             best = val_mae
             torch.save(model.state_dict(), MODEL_DIR / "primary_bilstm.pt")
