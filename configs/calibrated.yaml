@@ -1,0 +1,25 @@
+health:
+  L_slo: 14.0
+  U_max: 0.85
+  C_target: 0.236
+  w_L: 0.5
+  w_U: 0.25
+  w_C: 0.25
+  rho_max: 3.0
+  U_crit: 0.95
+  C_min: 0.118
+  Z_switch: 0.5
+  Z_recover: 0.34
+switching:
+  N_w: 3
+  N_rec: 3
+  D: 10.0
+  T_rec: 60.0
+runtime:
+  rate_hz: 20
+  dt: 0.5
+  tau_w: 5.0
+  T_hb: 1.0
+  T_req: 0.1
+  restart_cooldown: 5.0
+  wd_consecutive: 3
