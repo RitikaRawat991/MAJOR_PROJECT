@@ -59,13 +59,25 @@ class ResourceStress:
 
 
 # ---------------- fault factory ----------------
+def active_worker(s):
+    """The model that is serving when the fault starts: the Primary, or the Fallback
+    in policy B (which has no Primary). Model faults always hit this model."""
+    return s.P if s.P is not None else s.F
+
+
+def _on_active(fn):
+    return lambda s: fn(active_worker(s))
+
+
 def make_fault(name):
     if name == "kill":                              # permanent crash; the system must restart it
-        return (lambda s: s.P.proc.terminate()), (lambda s: None)
+        return _on_active(lambda w: w.proc.terminate()), (lambda s: None)
     if name == "hang":                              # process alive but frozen; fault ends by itself
-        return (lambda s: setattr(s.P.hang, "value", 1)), (lambda s: setattr(s.P.hang, "value", 0))
+        return (_on_active(lambda w: setattr(w.hang, "value", 1)),
+                _on_active(lambda w: setattr(w.hang, "value", 0)))
     if name == "latency":                           # serving-wrapper delay (F2)
-        return (lambda s: setattr(s.P.delay_ms, "value", 25.0)), (lambda s: setattr(s.P.delay_ms, "value", 0.0))
+        return (_on_active(lambda w: setattr(w.delay_ms, "value", 25.0)),
+                _on_active(lambda w: setattr(w.delay_ms, "value", 0.0)))
     if name == "noise":                             # sensor noise on the load channel (F3)
         return (lambda s: setattr(s, "input_noise_kw", 1.0)), (lambda s: setattr(s, "input_noise_kw", 0.0))
     if name in ("cpu", "memory"):

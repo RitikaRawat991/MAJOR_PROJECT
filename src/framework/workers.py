@@ -14,7 +14,7 @@ def worker_main(kind, conn, hb, ready, delay_ms, hang):
     import joblib
     import torch
     torch.set_num_threads(1)
-    from src.models.fallback_rf import window_to_features
+    from src.data.windows import window_to_features
 
     if kind == "primary":
         from src.models.primary_lstm import BiLSTM

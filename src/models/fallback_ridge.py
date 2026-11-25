@@ -6,8 +6,7 @@ from pathlib import Path
 import numpy as np
 import joblib
 from sklearn.linear_model import Ridge
-from src.data.windows import load_split, make_windows
-from src.models.fallback_rf import window_to_features
+from src.data.windows import load_split, make_windows, window_to_features
 
 MODEL_DIR = Path("models")
 

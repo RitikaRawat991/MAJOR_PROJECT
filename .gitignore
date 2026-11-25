@@ -27,6 +27,12 @@ data/raw/
 data/processed/
 
 # ==============================
+# Test cache / live demo runs
+# ==============================
+.pytest_cache/
+results/live_*
+
+# ==============================
 # Jupyter Notebook
 # ==============================
 .ipynb_checkpoints/

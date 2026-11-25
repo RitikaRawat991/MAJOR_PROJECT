@@ -47,10 +47,15 @@ def _stats(win):
 
 
 class EdgeService:
-    def __init__(self, health: HealthConfig, sw: SwitchConfig, rt: RuntimeConfig, scaler_std: float):
+    def __init__(self, health: HealthConfig, sw: SwitchConfig, rt: RuntimeConfig, scaler_std: float,
+                 policy: str = "P"):
+        assert policy in ("P", "A", "B", "C", "E"), f"unknown policy {policy}"
+        self.policy = policy
         self.h, self.sw, self.rt, self.std = health, sw, rt, scaler_std
-        self.P = WorkerHandle("primary")
-        self.F = WorkerHandle("fallback")
+        # Start only the models this policy really uses (fair resource comparison):
+        #   P, C -> Primary + Fallback;   A, E -> Primary only;   B -> Fallback only
+        self.P = WorkerHandle("primary") if policy in ("P", "C", "A", "E") else None
+        self.F = WorkerHandle("fallback") if policy in ("P", "C", "B") else None
         self.ctl = SwitchController(health, sw)
         self.mon = UtilisationMonitor()
         self.win_live = deque()          # live Primary requests: (t, latency_ms, c)
@@ -63,11 +68,15 @@ class EdgeService:
         self._last_window = None
         self.requests, self.ticks, self.events_log = [], [], []
         self.t0 = None
+        self.stop_requested = False      # set True from outside (e.g. the dashboard) to stop run()
 
     # ------------------------------------------------------------ startup / shutdown
+    def _workers(self):
+        return [w for w in (self.P, self.F) if w is not None]
+
     def wait_ready(self, timeout=90.0):
         t = time.time()
-        while not (self.P.ready.value and self.F.ready.value):
+        while not all(w.ready.value for w in self._workers()):
             if time.time() - t > timeout:
                 raise RuntimeError("workers did not become ready")
             time.sleep(0.1)
@@ -75,12 +84,14 @@ class EdgeService:
         self.mon.reset_baseline()
 
     def shutdown(self):
-        for w in (self.P, self.F):
+        for w in self._workers():
             w.kill()
 
     # ------------------------------------------------------------ health / faults
     def _hard(self, w, timeouts):
         """Hard-fault flag: process dead, heartbeat too old, or watchdog (repeated timeouts)."""
+        if w is None:                    # model not part of this policy
+            return False
         if not w.alive():
             return True
         if w.ready.value and time.time() - w.hb.value > self.rt.T_hb:
@@ -88,9 +99,12 @@ class EdgeService:
         return timeouts >= self.rt.wd_consecutive
 
     def _live(self, w):
-        return bool(w.alive() and w.ready.value and time.time() - w.hb.value <= self.rt.T_hb)
+        return bool(w is not None and w.alive() and w.ready.value
+                    and time.time() - w.hb.value <= self.rt.T_hb)
 
     def _needs_restart(self, w):
+        if w is None:
+            return False
         return (not w.alive()) or bool(w.ready.value and time.time() - w.hb.value > self.rt.T_hb)
 
     def _restart(self, name, now):
@@ -111,6 +125,14 @@ class EdgeService:
             self._restart("primary", now)
         if self._needs_restart(self.F):
             self._restart("fallback", now)
+
+    def _serving(self):
+        """Which model serves the next request, depending on the policy."""
+        if self.policy in ("A", "E"):
+            return "primary"
+        if self.policy == "B":
+            return "fallback"
+        return self.ctl.serving                          # P and C: the controller decides
 
     # ------------------------------------------------------------ control tick
     def _probe(self, now):
@@ -141,7 +163,7 @@ class EdgeService:
         P_live, F_live = self._live(self.P), self._live(self.F)
 
         Z = Zhat = L = C = None
-        if self.ctl.state is State.PRIMARY:
+        if self.P is not None and self.ctl.state is State.PRIMARY:
             L, C = _stats(self.win_live)
             Z = health_score(self.h, L, U, C)[0]
         if self._last_window is not None and self.ctl.probe_allowed(Obs(t=now, P_live=P_live, U=U)):
@@ -151,10 +173,13 @@ class EdgeService:
 
         obs = Obs(t=now, h_P=hP, h_F=hF, Z=Z, Z_hat=Zhat,
                   P_live=P_live, F_live=F_live, U=U)
-        tr = self.ctl.step(obs)
-        if tr:
-            self._on_transition(tr)
-        self._maintain(now)
+        if self.policy in ("P", "C"):                    # switching policies
+            tr = self.ctl.step(obs)
+            if tr:
+                self._on_transition(tr)
+            self._maintain(now)
+        elif self.policy == "E" and self._needs_restart(self.P):
+            self._restart("primary", now)                # restart only, no fallback
         self.ticks.append(dict(t=now, state=self.ctl.state.value, Z=Z, Z_hat=Zhat,
                                L_p95=L, C=C, U=U, h_P=int(hP), h_F=int(hF)))
 
@@ -164,8 +189,9 @@ class EdgeService:
             window = window.copy()
             window[:, 0] += self._rng.normal(0, self.input_noise_kw / self.std, len(window)).astype("float32")
         self._last_window = window
-        who = self.ctl.serving
-        rec = dict(t=now, i=i, state=self.ctl.state.value, served=who,
+        who = self._serving()
+        state = self.ctl.state.value if self.policy in ("P", "C") else "-"
+        rec = dict(t=now, i=i, state=state, served=who,
                    lat_ms=None, pred=None, y=y, c=None)
         if who is not None:
             w = self.P if who == "primary" else self.F
@@ -195,7 +221,7 @@ class EdgeService:
         next_tick, i = 0.0, 0
         while True:
             now = time.perf_counter() - self.t0
-            if now >= duration:
+            if now >= duration or self.stop_requested:
                 break
             while events and events[0][0] <= now:
                 events.pop(0)[1](self)
@@ -209,15 +235,28 @@ class EdgeService:
             wait = self.t0 + i * period - time.perf_counter()
             if wait > 0:
                 time.sleep(wait)
+            else:
+                # Behind schedule because a request blocked. The slots that passed meanwhile
+                # are requests that got NO answer: record them as missed, do not "catch up".
+                missed = int(-wait / period)
+                state = self.ctl.state.value if self.policy in ("P", "C") else "-"
+                for _ in range(missed):
+                    k = i % len(X)
+                    self.requests.append(dict(t=i * period, i=i, state=state, served="missed",
+                                              lat_ms=None, pred=None, y=float(y[k]), c=None))
+                    i += 1
 
     # ------------------------------------------------------------ output
     def save(self, name, out_dir="results"):
         Path(out_dir).mkdir(exist_ok=True)
 
         def dump(rows, suffix):
+            path = Path(out_dir) / f"{name}_{suffix}.csv"
             if not rows:
+                if path.exists():            # never leave a stale file from an older run
+                    path.unlink()
                 return
-            with open(Path(out_dir) / f"{name}_{suffix}.csv", "w", newline="") as f:
+            with open(path, "w", newline="") as f:
                 wr = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
                 wr.writeheader()
                 wr.writerows(rows)

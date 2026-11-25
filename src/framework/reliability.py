@@ -9,9 +9,8 @@ import torch
 import joblib
 from scipy.stats import spearmanr
 from sklearn.linear_model import Ridge
-from src.data.windows import load_split, make_windows
+from src.data.windows import load_split, make_windows, window_to_features
 from src.models.primary_lstm import BiLSTM, predict
-from src.models.fallback_rf import window_to_features
 
 MODEL_DIR = Path("models")
 COVERAGE = 0.90      # target coverage of the interval

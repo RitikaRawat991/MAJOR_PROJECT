@@ -46,8 +46,27 @@ def make_windows(df: pd.DataFrame, scaler: dict, stride: int = 1):
     # kisi range m kitne nan h
     nan_in_target = nan[starts + LOOKBACK - 1 + HORIZON]
     starts = starts[(nan_in_input == 0) & (nan_in_target == 0)]
+    
+    
     #wo window left jinke start m b nan 0 or baadme b 0
+    #starts filter hogys abh pehle start m starting rows daalkr
+    #  usse colum bnadia usme 0,1,2 add kia or un location ki windows ki value uthadi 3*3 matrix bn gyi 
     idx = starts[:, None] + np.arange(LOOKBACK)[None, :]
     Xw = X[idx]
     yw = y[starts + LOOKBACK - 1 + HORIZON]
     return Xw, yw, starts
+
+
+# ---------------- tabular features for the Fallback (Ridge) and the reliability model ----------------
+LAGS = [1, 2, 3, 5, 10, 15, 30, 45, 60]     # minutes back from "now"
+
+
+def window_to_features(Xw):
+    """Xw: (N, 60, 3) -> (N, 14). Same windows as the Primary => fair comparison."""
+    load = Xw[:, :, 0]
+    cols = [load[:, -k] for k in LAGS]                   # lag features
+    cols += [load[:, -15:].mean(1),                      # 15-min mean
+             load.mean(1),                               # 60-min mean
+             load[:, -15:].std(1)]                       # 15-min variability
+    cols += [Xw[:, -1, 1], Xw[:, -1, 2]]                 # time of day (sin, cos)
+    return np.stack(cols, axis=1).astype("float32")

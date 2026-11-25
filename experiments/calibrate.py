@@ -1,5 +1,5 @@
 """calibrate.py -- Step 8b. Derive health-score parameters from a FAULT-FREE run.
-Run:  python -m experiments.calibrate
+Run:  python -m experiments.calibrate        (or the "Setup & calibration" page of the dashboard)
 
 Rules (fixed BEFORE looking at the data):
   L_slo    = ceil(2 x p99 of the windowed-p95 latency)            [ms]
@@ -21,19 +21,20 @@ from src.framework.state_machine import SwitchConfig
 
 SRC, OUT, DURATION = "configs/default.yaml", "configs/calibrated.yaml", 90.0
 
-if __name__ == "__main__":
+
+def calibrate(src=SRC, out=OUT, duration=DURATION, log=print):
     scaler = json.load(open("models/scaler.json"))
     Xva, yva, _ = make_windows(load_split("val"), scaler, stride=5)
     h = len(Xva) // 2
     X, y = Xva[h:], yva[h:]
 
-    hc = HealthConfig.from_yaml(SRC)
-    sw = dataclasses.replace(SwitchConfig.from_yaml(SRC), N_w=10 ** 9)   # never soft-switch
-    rt = RuntimeConfig.from_yaml(SRC)
+    hc = HealthConfig.from_yaml(src)
+    sw = dataclasses.replace(SwitchConfig.from_yaml(src), N_w=10 ** 9)   # never soft-switch
+    rt = RuntimeConfig.from_yaml(src)
     svc = EdgeService(hc, sw, rt, scaler["std"])
     try:
-        print("calibration run (no faults, switching disabled)...")
-        svc.run(X, y, DURATION)
+        log("calibration run (no faults, switching disabled)...")
+        svc.run(X, y, duration)
     finally:
         svc.shutdown()
 
@@ -41,10 +42,10 @@ if __name__ == "__main__":
     L = np.array([t["L_p95"] for t in tk])
     C = np.array([t["C"] for t in tk])
     U = np.array([t["U"] for t in tk])
-    print(f"ticks used: {len(tk)}   state changes during run: {len(svc.ctl.log)}")
-    print(f"windowed p95 latency (ms): median {np.median(L):.2f}  p99 {np.percentile(L,99):.2f}  max {L.max():.2f}")
-    print(f"U: median {np.median(U):.2f}  p99 {np.percentile(U,99):.2f}  max {U.max():.2f}")
-    print(f"windowed c: p5 {np.percentile(C,5):.3f}  median {np.median(C):.3f}  min {C.min():.3f}")
+    log(f"ticks used: {len(tk)}   state changes during run: {len(svc.ctl.log)}")
+    log(f"windowed p95 latency (ms): median {np.median(L):.2f}  p99 {np.percentile(L,99):.2f}  max {L.max():.2f}")
+    log(f"U: median {np.median(U):.2f}  p99 {np.percentile(U,99):.2f}  max {U.max():.2f}")
+    log(f"windowed c: p5 {np.percentile(C,5):.3f}  median {np.median(C):.3f}  min {C.min():.3f}")
 
     L_slo = float(math.ceil(2 * np.percentile(L, 99)))
     U_max = max(0.85, round(1.2 * float(np.percentile(U, 99)), 2))
@@ -56,15 +57,22 @@ if __name__ == "__main__":
     Z = np.array([health_score(hc2, l, u, c)[0] for l, u, c in zip(L, U, C)])
     Z_recover = round(math.ceil(float(np.percentile(Z, 99)) * 100) / 100, 2)
     Z_switch = round(float(np.clip(Z.mean() + 5 * Z.std(), Z_recover + 0.10, 0.50)), 2)
-    print(f"\nnominal Z with new parameters: mean {Z.mean():.3f}  std {Z.std():.3f}  "
-          f"p99 {np.percentile(Z,99):.3f}  max {Z.max():.3f}")
+    log(f"nominal Z with new parameters: mean {Z.mean():.3f}  std {Z.std():.3f}  "
+        f"p99 {np.percentile(Z,99):.3f}  max {Z.max():.3f}")
     if Z_recover + 0.10 > 0.50:
-        print("WARNING: nominal Z is too high/noisy for a usable dead band; check the testbed.")
+        log("WARNING: nominal Z is too high/noisy for a usable dead band; check the testbed.")
 
-    cfg = yaml.safe_load(open(SRC))
+    cfg = yaml.safe_load(open(src))
     cfg["health"].update(L_slo=L_slo, U_max=U_max, U_crit=U_crit, C_target=C_target,
                          C_min=C_min, Z_recover=Z_recover, Z_switch=max(Z_switch, Z_recover + 0.01))
-    yaml.safe_dump(cfg, open(OUT, "w"), sort_keys=False)
-    print(f"\ncalibrated health parameters -> {OUT}")
-    for k in ("L_slo", "U_max", "U_crit", "C_target", "C_min", "Z_recover", "Z_switch"):
-        print(f"  {k:10s} = {cfg['health'][k]}")
+    yaml.safe_dump(cfg, open(out, "w"), sort_keys=False)
+    log(f"calibrated health parameters -> {out}")
+    params = {k: cfg["health"][k] for k in
+              ("L_slo", "U_max", "U_crit", "C_target", "C_min", "Z_recover", "Z_switch")}
+    for k, v in params.items():
+        log(f"  {k:10s} = {v}")
+    return params
+
+
+if __name__ == "__main__":
+    calibrate()

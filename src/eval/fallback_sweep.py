@@ -7,8 +7,7 @@ import time
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
-from src.data.windows import load_split, make_windows
-from src.models.fallback_rf import window_to_features
+from src.data.windows import load_split, make_windows, window_to_features
 
 SEED = 42
 N_WARM, N_TIMED = 20, 300
