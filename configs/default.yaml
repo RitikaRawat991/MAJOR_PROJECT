@@ -25,3 +25,4 @@ runtime:
   T_req: 0.1              # per-request timeout (s)
   restart_cooldown: 5.0   # min time between restarts of a worker (s)
   wd_consecutive: 3       # consecutive request timeouts => inference watchdog fires
+
