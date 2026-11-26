@@ -5,6 +5,10 @@ global interpreter lock) delayed its requests, so the live demo showed late answ
 that the experiments (separate process) did not show. Here the dashboard only talks to the system
 through a pipe:
 
+Each message is sent as (id, message) and answered as (id, reply), so a late reply to an
+earlier request (e.g. while the models are still loading) can never be taken as the answer
+to a newer one.
+
   dashboard -> ("snap", n_req, n_ticks)      reply: new requests/ticks since then + current status
   dashboard -> ("inject", label, key, value) reply: time of the fault
   dashboard -> ("stop", run_name)            reply: "saved"; the process then exits
@@ -75,23 +79,24 @@ def live_main(policy, cfg, conn):
                 msg = conn.recv()
             except (EOFError, OSError):          # dashboard gone
                 break
+            mid, msg = msg                       # every reply carries the id of its request
             if msg[0] == "snap":
-                conn.send(_snapshot(svc, msg[1], msg[2]))
+                conn.send((mid, _snapshot(svc, msg[1], msg[2])))
             elif msg[0] == "inject":
                 _, label, key, value = msg
                 if svc.t0 is None:
-                    conn.send(None)
+                    conn.send((mid, None))
                     continue
                 _inject(svc, key, value)
                 t = time.perf_counter() - svc.t0
                 svc.events_log.append((t, f"ui_{label}"))
-                conn.send(t)
+                conn.send((mid, t))
             elif msg[0] == "stop":
                 svc.stop_requested = True
                 th.join(timeout=10)
                 if svc.t0 is not None:
                     svc.save(msg[1])
-                conn.send("saved")
+                conn.send((mid, "saved"))
                 break
     finally:
         svc.stop_requested = True

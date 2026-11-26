@@ -408,11 +408,18 @@ def live_call(msg, timeout=15.0):
         conn = H["conn"]
         if conn is None:
             return None
+        H["msg_id"] = mid = H.get("msg_id", 0) + 1
+        deadline = time.perf_counter() + timeout
         try:
-            conn.send(msg)
-            if not conn.poll(timeout):
-                return None
-            return conn.recv()
+            conn.send((mid, msg))
+            while True:
+                left = deadline - time.perf_counter()
+                if left <= 0 or not conn.poll(left):
+                    return None
+                rid, reply = conn.recv()
+                if rid == mid:
+                    return reply
+                # a late reply to an older request (it had timed out): drop it
         except (EOFError, OSError):
             return None
 
@@ -449,7 +456,7 @@ def stop_live():
 def inject(label, key, value, fault_key=None, on=True):
     H = live_holder()
     t = live_call(("inject", label, key, value))
-    if t is None:
+    if not isinstance(t, float):
         st.toast("System is still starting. Try again in a few seconds.")
         return
     H["events"].append((t, label))
