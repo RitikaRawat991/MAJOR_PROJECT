@@ -45,7 +45,8 @@ src/data/        load_data.py (cleaning, split), windows.py (scaling, windows, f
 src/models/      primary_lstm.py, fallback_ridge.py
 src/framework/   the orchestration layer:
                  workers.py (model processes), monitor.py (CPU/memory), reliability.py (score c),
-                 health_score.py (Z), state_machine.py (4 states), service.py (main loop)
+                 health_score.py (Z), state_machine.py (4 states), service.py (main loop),
+                 live_process.py (runs the live demo in its own process, so the UI cannot slow it)
 src/faults/      injectors.py (kill, hang, latency, noise; cpu/memory for Phase 2)
 src/eval/        metrics.py (A, Q, detection, recovery), fallback_sweep.py (model selection)
 experiments/     calibrate.py, run_nominal.py, run_scenario.py
